@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "294865674964",
+    "project_id": "memorylux-cf1b4",
+    "storage_bucket": "memorylux-cf1b4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:294865674964:android:a648599541ffd6da5e5141",
+        "android_client_info": {
+          "package_name": "com.danielux135.memorylux"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgQMTiAEeqIQWsfESWA-kuh7BdYZX0rOw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
