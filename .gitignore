@@ -37,6 +37,13 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/dist/
+/.tmp_icon/
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
 coverage/
 pubspec.lock
 
@@ -76,6 +83,16 @@ app.*.map.json
 # Desktop and generated helpers
 **/windows/flutter/ephemeral/
 **/windows/flutter/generated/
+**/windows/**/ephemeral/
+**/windows/build/
+**/linux/flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+**/web/.dart_tool/
+
+# Temporary export/test artifacts
+memorylux-upload-test.b64
+memorylux-upload-test.png
+*.log
 **/linux/flutter/ephemeral/
 **/macos/Flutter/ephemeral/
 **/web/.dart_tool/
