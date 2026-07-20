@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- fondo redondeado blanco: el color y la opacidad reales se aplican
+     en tiempo de ejecución con colorFilter/imageAlpha desde kotlin -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFFFFF" />
+    <corners android:radius="16dp" />
+</shape>

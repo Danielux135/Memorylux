@@ -74,8 +74,12 @@ class Recurrence {
         final month = current.month == 12 ? 1 : current.month + 1;
         final year = current.month == 12 ? current.year + 1 : current.year;
         final lastDay = DateTime(year, month + 1, 0).day;
-        next = DateTime(year, month,
-            current.day > lastDay ? lastDay : current.day, current.hour, current.minute);
+        next = DateTime(
+            year,
+            month,
+            current.day > lastDay ? lastDay : current.day,
+            current.hour,
+            current.minute);
       case RecurrenceType.weekdays:
         if (weekdays.isEmpty) return null;
         var candidate = current.add(const Duration(days: 1));
@@ -127,6 +131,7 @@ class Memory {
   List<ChecklistItem> checklist;
   String color; // hex del post-it
   String? imagePath; // foto de fondo del sticker (ruta local)
+  String? imageRemotePath; // URL remota para sincronizar la foto
   List<String> tags;
   DateTime? dueDate; // fecha con hora si tiene alarma
   bool hasTime; // si dueDate incluye hora concreta
@@ -138,6 +143,7 @@ class Memory {
   int snoozeCount; // veces pospuesta desde la última alarma
   DateTime? snoozedUntil;
   int? notificationMinutesBefore;
+  String? alarmSound; // null usa ajustes; 'alarm' suena; 'silent' no suena
   double rotation; // inclinación fija del post-it en el tablero
   double order; // orden manual dentro de su zona (arrastrar y soltar)
   final DateTime createdAt;
@@ -151,6 +157,7 @@ class Memory {
     List<ChecklistItem>? checklist,
     this.color = '#FFE082',
     this.imagePath,
+    this.imageRemotePath,
     List<String>? tags,
     this.dueDate,
     this.hasTime = false,
@@ -162,6 +169,7 @@ class Memory {
     this.snoozeCount = 0,
     this.snoozedUntil,
     this.notificationMinutesBefore,
+    this.alarmSound,
     double? rotation,
     double? order,
     DateTime? createdAt,
@@ -212,6 +220,7 @@ class Memory {
         'checklist': checklist.map((c) => c.toMap()).toList(),
         'color': color,
         'imagePath': imagePath,
+        'imageRemotePath': imageRemotePath,
         'tags': tags,
         'dueDate': dueDate?.toIso8601String(),
         'hasTime': hasTime,
@@ -223,6 +232,7 @@ class Memory {
         'snoozeCount': snoozeCount,
         'snoozedUntil': snoozedUntil?.toIso8601String(),
         'notificationMinutesBefore': notificationMinutesBefore,
+        'alarmSound': alarmSound,
         'rotation': rotation,
         'order': order,
         'createdAt': createdAt.toIso8601String(),
@@ -239,6 +249,7 @@ class Memory {
             .toList(),
         color: (map['color'] as String?) ?? '#FFE082',
         imagePath: map['imagePath'] as String?,
+        imageRemotePath: map['imageRemotePath'] as String?,
         tags: ((map['tags'] as List?) ?? []).cast<String>(),
         dueDate: map['dueDate'] != null
             ? DateTime.parse(map['dueDate'] as String)
@@ -264,6 +275,7 @@ class Memory {
             ? DateTime.parse(map['snoozedUntil'] as String)
             : null,
         notificationMinutesBefore: map['notificationMinutesBefore'] as int?,
+        alarmSound: map['alarmSound'] as String?,
         rotation: (map['rotation'] as num?)?.toDouble(),
         order: (map['order'] as num?)?.toDouble() ??
             (map['createdAt'] != null
@@ -285,6 +297,7 @@ class Memory {
     List<ChecklistItem>? checklist,
     String? color,
     Object? imagePath = _sentinel,
+    Object? imageRemotePath = _sentinel,
     List<String>? tags,
     Object? dueDate = _sentinel,
     bool? hasTime,
@@ -296,6 +309,7 @@ class Memory {
     int? snoozeCount,
     Object? snoozedUntil = _sentinel,
     Object? notificationMinutesBefore = _sentinel,
+    Object? alarmSound = _sentinel,
     double? order,
   }) =>
       Memory(
@@ -307,6 +321,9 @@ class Memory {
         color: color ?? this.color,
         imagePath:
             imagePath == _sentinel ? this.imagePath : imagePath as String?,
+        imageRemotePath: imageRemotePath == _sentinel
+            ? this.imageRemotePath
+            : imageRemotePath as String?,
         tags: tags ?? this.tags,
         dueDate: dueDate == _sentinel ? this.dueDate : dueDate as DateTime?,
         hasTime: hasTime ?? this.hasTime,
@@ -324,6 +341,8 @@ class Memory {
         notificationMinutesBefore: notificationMinutesBefore == _sentinel
             ? this.notificationMinutesBefore
             : notificationMinutesBefore as int?,
+        alarmSound:
+            alarmSound == _sentinel ? this.alarmSound : alarmSound as String?,
         rotation: rotation,
         order: order ?? this.order,
         createdAt: createdAt,

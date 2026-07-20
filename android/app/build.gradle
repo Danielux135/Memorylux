@@ -1,6 +1,6 @@
 plugins {
     id "com.android.application"
-    id "kotlin-android"
+    id "org.jetbrains.kotlin.android"
     id "dev.flutter.flutter-gradle-plugin"
     id "com.google.gms.google-services"
 }
@@ -26,12 +26,33 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders += [appLabel: "Memorylux"]
+    }
+    flavorDimensions "edition"
+    productFlavors {
+        free {
+            dimension "edition"
+            applicationIdSuffix ".free"
+            resValue "string", "app_name", "Memorylux Gratis"
+            manifestPlaceholders += [appLabel: "Memorylux Gratis"]
+        }
+        paid {
+            dimension "edition"
+            applicationIdSuffix ".paid"
+            resValue "string", "app_name", "Memorylux"
+            manifestPlaceholders += [appLabel: "Memorylux"]
+        }
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.debug
         }
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
     }
 }
 

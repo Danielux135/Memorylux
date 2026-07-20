@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/memory.dart';
 import '../models/user_settings.dart';
+import 'audio_store.dart';
 
 class NotificationService extends ChangeNotifier {
   final FlutterLocalNotificationsPlugin _plugin =
@@ -14,17 +15,20 @@ class NotificationService extends ChangeNotifier {
   final StreamController<NotificationResponse> _responses =
       StreamController<NotificationResponse>.broadcast();
   bool _initialized = false;
+  Future<void>? _initFuture;
 
   bool get initialized => _initialized;
   Stream<NotificationResponse> get responses => _responses.stream;
 
-  Future<void> init() async {
-    if (_initialized) return;
+  Future<void> init() {
+    return _initFuture ??= _doInit();
+  }
 
+  Future<void> _doInit() async {
     tz_data.initializeTimeZones();
 
     const settings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      android: AndroidInitializationSettings('ic_stat_notify'),
       iOS: DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
@@ -51,7 +55,7 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<bool> requestPermissions() async {
-    if (!_initialized) return false;
+    await init();
     try {
       final android = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
@@ -79,57 +83,89 @@ class NotificationService extends ChangeNotifier {
     return true;
   }
 
-  static const _details = NotificationDetails(
-    android: AndroidNotificationDetails(
-      'memorylux_memories_v2',
-      'Recuerdos',
-      channelDescription: 'Alarmas de tus memorias en Memorylux',
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-      actions: [
-        AndroidNotificationAction(
-          'snooze_10',
-          'Posponer 10 min',
-          showsUserInterface: true,
-        ),
-        AndroidNotificationAction(
-          'complete',
-          'Hecho',
-          showsUserInterface: true,
-          semanticAction: SemanticAction.markAsRead,
-        ),
-      ],
+  static const _alarmActions = [
+    AndroidNotificationAction(
+      'snooze_10',
+      'Posponer 10 min',
+      showsUserInterface: true,
     ),
-    iOS: DarwinNotificationDetails(),
-  );
+    AndroidNotificationAction(
+      'complete',
+      'Hecho',
+      showsUserInterface: true,
+      semanticAction: SemanticAction.markAsRead,
+    ),
+  ];
 
-  static const _persistentDetails = NotificationDetails(
-    android: AndroidNotificationDetails(
-      'memorylux_persistent_v2',
-      'Recuerdos persistentes',
-      channelDescription:
-          'Reavisos de memorias importantes que siguen pendientes',
-      importance: Importance.max,
-      priority: Priority.max,
-      ongoing: true,
-      playSound: true,
-      actions: [
-        AndroidNotificationAction(
-          'snooze_10',
-          'Posponer 10 min',
-          showsUserInterface: true,
-        ),
-        AndroidNotificationAction(
-          'complete',
-          'Hecho',
-          showsUserInterface: true,
-          semanticAction: SemanticAction.markAsRead,
-        ),
-      ],
-    ),
-    iOS: DarwinNotificationDetails(),
-  );
+  static NotificationDetails _alarmDetails(String sound) {
+    final silent = sound == 'silent';
+    final soundId = _soundChannelId(sound);
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        silent
+            ? 'memorylux_memories_silent_v1'
+            : 'memorylux_memories_${soundId}_v1',
+        silent ? 'Recuerdos sin sonido' : 'Recuerdos con alarma',
+        channelDescription: 'Alarmas de tus memorias en Memorylux',
+        importance: Importance.max,
+        priority: Priority.high,
+        playSound: !silent,
+        sound: silent ? null : _androidSound(sound),
+        actions: _alarmActions,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentSound: !silent,
+        sound: silent ? null : _darwinSound(sound),
+      ),
+    );
+  }
+
+  static NotificationDetails _persistentDetailsFor(String sound) {
+    final silent = sound == 'silent';
+    final soundId = _soundChannelId(sound);
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        silent
+            ? 'memorylux_persistent_silent_v1'
+            : 'memorylux_persistent_${soundId}_v1',
+        silent ? 'Recuerdos persistentes sin sonido' : 'Recuerdos persistentes',
+        channelDescription:
+            'Reavisos de memorias importantes que siguen pendientes',
+        importance: Importance.max,
+        priority: Priority.max,
+        ongoing: true,
+        playSound: !silent,
+        sound: silent ? null : _androidSound(sound),
+        actions: _alarmActions,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentSound: !silent,
+        sound: silent ? null : _darwinSound(sound),
+      ),
+    );
+  }
+
+  static AndroidNotificationSound _androidSound(String sound) {
+    final ref = AudioStore.pathFromValue(sound);
+    if (ref != null) {
+      // ya es una content:// pública (registrada en MediaStore) si el
+      // registro funcionó; si no, cae a file:// como último recurso
+      final uri = ref.startsWith('content://') ? ref : Uri.file(ref).toString();
+      return UriAndroidNotificationSound(uri);
+    }
+    return const RawResourceAndroidNotificationSound('alarm');
+  }
+
+  static String _darwinSound(String sound) {
+    return AudioStore.isCustom(sound) ? 'alarm.mp3' : 'alarm.mp3';
+  }
+
+  static String _soundChannelId(String sound) {
+    if (AudioStore.isCustom(sound)) {
+      return 'custom_${sound.hashCode & 0x3FFFFFFF}';
+    }
+    return sound == 'alarm' ? 'alarm' : 'default';
+  }
 
   static const _summaryDetails = NotificationDetails(
     android: AndroidNotificationDetails(
@@ -138,8 +174,9 @@ class NotificationService extends ChangeNotifier {
       channelDescription: 'Resumen matinal con las tareas del día',
       importance: Importance.high,
       priority: Priority.high,
+      playSound: false,
     ),
-    iOS: DarwinNotificationDetails(),
+    iOS: DarwinNotificationDetails(presentSound: false),
   );
 
   // id fijo reservado para el resumen diario
@@ -162,7 +199,7 @@ class NotificationService extends ChangeNotifier {
   // programa la alarma a la hora exacta, el aviso previo con antelación y,
   // si es persistente, los reavisos escalonados
   Future<void> scheduleMemory(Memory memory, UserSettings settings) async {
-    if (!_initialized) return;
+    await init();
     // solo cancela lo pendiente de esta memoria: así reprogramar no borra
     // los avisos que ya están en la bandeja del sistema
     await _cancelPending(memory);
@@ -174,6 +211,9 @@ class NotificationService extends ChangeNotifier {
 
     final en = settings.language == 'en';
     final base = _baseId(memory);
+    final alarmSound = memory.hasTime
+        ? memory.alarmSound ?? settings.defaultAlarmSound
+        : 'silent';
     if (due.isAfter(DateTime.now())) {
       await _schedule(
         id: base,
@@ -184,7 +224,8 @@ class NotificationService extends ChangeNotifier {
                 : 'Tienes un recuerdo pendiente')
             : memory.body,
         when: due,
-        details: _details,
+        details: _alarmDetails(alarmSound),
+        fallbackDetails: _alarmDetails('alarm'),
         payload: memory.id,
       );
     }
@@ -204,7 +245,8 @@ class NotificationService extends ChangeNotifier {
               ? (en ? 'Get ready, it\'s coming up' : 'Prepárate, que se acerca')
               : memory.body,
           when: early,
-          details: _details,
+          details: _alarmDetails(alarmSound),
+          fallbackDetails: _alarmDetails('alarm'),
           payload: memory.id,
         );
       }
@@ -224,8 +266,11 @@ class NotificationService extends ChangeNotifier {
           body: 'Hazlo ahora, pospónlo o descártalo.',
           when: followUp,
           details: memory.priority == MemoryPriority.persistent
-              ? _persistentDetails
-              : _details,
+              ? _persistentDetailsFor(alarmSound)
+              : _alarmDetails(alarmSound),
+          fallbackDetails: memory.priority == MemoryPriority.persistent
+              ? _persistentDetailsFor('alarm')
+              : _alarmDetails('alarm'),
           payload: memory.id,
         );
       }
@@ -238,6 +283,7 @@ class NotificationService extends ChangeNotifier {
     required String body,
     required DateTime when,
     required NotificationDetails details,
+    NotificationDetails? fallbackDetails,
     String? payload,
   }) async {
     final scheduledDate = tz.TZDateTime.from(when, tz.local);
@@ -252,6 +298,7 @@ class NotificationService extends ChangeNotifier {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         payload: payload,
       );
+      return;
     } catch (e) {
       if (e.toString().contains('exact_alarms_not_permitted')) {
         try {
@@ -277,6 +324,30 @@ class NotificationService extends ChangeNotifier {
         debugPrint('No se pudo programar la notificación: $e');
       }
     }
+
+    // el sonido custom puede fallar (Android no puede leer el archivo del
+    // sistema de notificaciones); reintenta con el sonido por defecto para
+    // que al menos la notificación se muestre
+    if (fallbackDetails != null) {
+      try {
+        await _plugin.zonedSchedule(
+          id: id,
+          title: title,
+          body: body,
+          scheduledDate: scheduledDate,
+          notificationDetails: fallbackDetails,
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          payload: payload,
+        );
+        debugPrint(
+          'Notificación programada con sonido por defecto porque el sonido custom falló.',
+        );
+      } catch (fallbackError) {
+        debugPrint(
+          'Tampoco se pudo programar la notificación con sonido por defecto: $fallbackError',
+        );
+      }
+    }
   }
 
   // cancela solo las alarmas aún no lanzadas de esta memoria
@@ -297,7 +368,7 @@ class NotificationService extends ChangeNotifier {
   // cancela todo lo de esta memoria, incluida la notificación ya mostrada
   // (para cuando se completa o se borra)
   Future<void> cancelMemory(Memory memory) async {
-    if (!_initialized) return;
+    await init();
     final base = _baseId(memory);
     try {
       for (var i = 0; i <= 6; i++) {
@@ -309,7 +380,7 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<void> cancelAll() async {
-    if (!_initialized) return;
+    await init();
     try {
       await _plugin.cancelAll();
     } catch (e) {
@@ -337,7 +408,7 @@ class NotificationService extends ChangeNotifier {
     List<Memory> memories,
     UserSettings settings,
   ) async {
-    if (!_initialized) return;
+    await init();
     try {
       await _plugin.cancel(id: _dailySummaryId);
     } catch (_) {}

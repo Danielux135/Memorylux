@@ -9,7 +9,9 @@ import '../providers/memory_provider.dart';
 import '../providers/settings_provider.dart';
 import '../widgets/lead_time_sheet.dart';
 import '../services/auth_service.dart';
+import '../services/audio_store.dart';
 import '../services/image_store.dart';
+import '../services/monetization_service.dart';
 import '../theme/app_theme.dart';
 import '../l10n/lang.dart';
 
@@ -46,6 +48,7 @@ class _MemoryEditorState extends State<MemoryEditor> {
   late MemoryPriority _priority;
   late BoardZone _zone;
   int? _minutesBefore; // antelación del aviso; null usa la de ajustes
+  String? _alarmSound; // null usa ajustes; 'alarm' suena; 'silent' no suena
 
   Memory? get _editing => widget.memory;
 
@@ -68,6 +71,7 @@ class _MemoryEditorState extends State<MemoryEditor> {
     _priority = m?.priority ?? MemoryPriority.normal;
     _zone = m?.zone ?? BoardZone.today;
     _minutesBefore = m?.notificationMinutesBefore;
+    _alarmSound = m?.alarmSound;
   }
 
   @override
@@ -110,6 +114,7 @@ class _MemoryEditorState extends State<MemoryEditor> {
           priority: _priority,
           zone: _zone,
           notificationMinutesBefore: _minutesBefore,
+          alarmSound: _alarmSound,
         ),
         settings,
       );
@@ -129,6 +134,7 @@ class _MemoryEditorState extends State<MemoryEditor> {
           priority: _priority,
           zone: _zone,
           notificationMinutesBefore: _minutesBefore,
+          alarmSound: _alarmSound,
         ),
         settings,
       );
@@ -136,8 +142,8 @@ class _MemoryEditorState extends State<MemoryEditor> {
     if (navigator.mounted) navigator.pop();
     messenger.showSnackBar(
       SnackBar(
-          content: Text(context.pick(
-              '“$title” guardado en tu panel', '“$title” saved to your board'))),
+          content: Text(context.pick('“$title” guardado en tu panel',
+              '“$title” saved to your board'))),
     );
   }
 
@@ -152,8 +158,12 @@ class _MemoryEditorState extends State<MemoryEditor> {
     if (date == null) return;
     setState(() {
       final old = _dueDate;
-      _dueDate = DateTime(date.year, date.month, date.day,
-          _hasTime && old != null ? old.hour : 9, _hasTime && old != null ? old.minute : 0);
+      _dueDate = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          _hasTime && old != null ? old.hour : 9,
+          _hasTime && old != null ? old.minute : 0);
     });
   }
 
@@ -172,8 +182,22 @@ class _MemoryEditorState extends State<MemoryEditor> {
     });
   }
 
-  // selector de fondo custom: subir foto nueva o elegir de las ya subidas
+  // selector de fondo custom: subir foto nueva o elegir de las ya subidas.
+  // en Android es una funcion premium exclusiva de la app de pago
   Future<void> _pickImage() async {
+    final monetization = context.read<MonetizationService>();
+    if (monetization.isAndroid && !monetization.isPremium) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.pick(
+            'Las fotos custom son una función premium. Consíguela en la versión de pago.',
+            'Custom photos are a premium feature. Get it in the paid version.',
+          )),
+        ),
+      );
+      return;
+    }
+
     final gallery = await ImageStore.gallery();
     if (!mounted) return;
     final result = await showModalBottomSheet<String>(
@@ -185,9 +209,10 @@ class _MemoryEditorState extends State<MemoryEditor> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ListTile(
-              leading: const Icon(Icons.add_photo_alternate,
-                  color: AppTheme.lux),
-              title: Text(context.pick('Subir una foto nueva', 'Upload a new photo')),
+              leading:
+                  const Icon(Icons.add_photo_alternate, color: AppTheme.lux),
+              title: Text(
+                  context.pick('Subir una foto nueva', 'Upload a new photo')),
               subtitle: Text(context.pick(
                   'Tu anime, tu mascota, lo que quieras de fondo',
                   'Your anime, your pet, whatever you want as background')),
@@ -205,10 +230,10 @@ class _MemoryEditorState extends State<MemoryEditor> {
             if (gallery.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: Text(context.pick('Tus fotos subidas', 'Your uploaded photos'),
+                child: Text(
+                    context.pick('Tus fotos subidas', 'Your uploaded photos'),
                     style: AppTheme.hand(
-                        size: 22,
-                        color: Theme.of(ctx).colorScheme.onSurface)),
+                        size: 22, color: Theme.of(ctx).colorScheme.onSurface)),
               ),
               SizedBox(
                 height: 96,
@@ -283,10 +308,10 @@ class _MemoryEditorState extends State<MemoryEditor> {
                 final confirm = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: Text(
-                        context.pick('¿Borrar este recuerdo?', 'Delete this memory?')),
-                    content:
-                        Text(context.pick('No se puede deshacer.', 'This cannot be undone.')),
+                    title: Text(context.pick(
+                        '¿Borrar este recuerdo?', 'Delete this memory?')),
+                    content: Text(context.pick(
+                        'No se puede deshacer.', 'This cannot be undone.')),
                     actions: [
                       TextButton(
                           onPressed: () => Navigator.pop(ctx, false),
@@ -298,8 +323,7 @@ class _MemoryEditorState extends State<MemoryEditor> {
                   ),
                 );
                 if (confirm == true) {
-                  await provider.deleteMemory(_editing!.id,
-                      settings: settings);
+                  await provider.deleteMemory(_editing!.id, settings: settings);
                   if (navigator.mounted) navigator.pop();
                 }
               },
@@ -321,15 +345,16 @@ class _MemoryEditorState extends State<MemoryEditor> {
             controller: _title,
             style: AppTheme.hand(size: 28, color: scheme.onSurface),
             decoration: InputDecoration(
-                hintText: context.pick(
-                    '¿Qué no quieres olvidar?', 'What do you not want to forget?')),
+                hintText: context.pick('¿Qué no quieres olvidar?',
+                    'What do you not want to forget?')),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _body,
             maxLines: 3,
             decoration: InputDecoration(
-                hintText: context.pick('Detalles (opcional)', 'Details (optional)')),
+                hintText:
+                    context.pick('Detalles (opcional)', 'Details (optional)')),
           ),
           const SizedBox(height: 20),
 
@@ -370,13 +395,10 @@ class _MemoryEditorState extends State<MemoryEditor> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: _imagePath != null
-                          ? AppTheme.lux
-                          : scheme.outline,
+                      color: _imagePath != null ? AppTheme.lux : scheme.outline,
                       width: _imagePath != null ? 3 : 1,
                     ),
-                    image: _imagePath != null &&
-                            File(_imagePath!).existsSync()
+                    image: _imagePath != null && File(_imagePath!).existsSync()
                         ? DecorationImage(
                             image: FileImage(File(_imagePath!)),
                             fit: BoxFit.cover)
@@ -429,6 +451,71 @@ class _MemoryEditorState extends State<MemoryEditor> {
                     }
                   },
                 ),
+              if (_dueDate != null && _hasTime)
+                ActionChip(
+                  avatar: const Icon(Icons.volume_up, size: 16),
+                  label: Text(
+                    '${context.pick('Sonido', 'Sound')}: ${_alarmSoundLabel(context, _alarmSound)}',
+                  ),
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final addedSoundMessage = context.pick(
+                      'Sonido "{name}" añadido a esta alarma',
+                      'Sound "{name}" added to this alarm',
+                    );
+                    final choice = await showModalBottomSheet<String>(
+                      context: context,
+                      showDragHandle: true,
+                      builder: (ctx) => SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.settings),
+                              title: Text(context.pick(
+                                  'Usar sonido por defecto',
+                                  'Use default sound')),
+                              onTap: () => Navigator.pop(ctx, 'default'),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.notifications_active),
+                              title: const Text('Alarm'),
+                              onTap: () => Navigator.pop(ctx, 'alarm'),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.audio_file),
+                              title: Text(context.pick(
+                                  'Elegir audio...', 'Choose audio...')),
+                              onTap: () => Navigator.pop(ctx, 'pick'),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.volume_off),
+                              title: Text(context.pick('Silencio', 'Silent')),
+                              onTap: () => Navigator.pop(ctx, 'silent'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                    if (choice == null) return;
+                    if (choice == 'default') {
+                      setState(() => _alarmSound = null);
+                    } else if (choice == 'pick') {
+                      final audio = await AudioStore.pickAndStore();
+                      if (audio == null || !mounted) return;
+                      setState(() => _alarmSound = audio.value);
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            addedSoundMessage.replaceAll('{name}', audio.name),
+                          ),
+                        ),
+                      );
+                    } else {
+                      setState(() => _alarmSound = choice);
+                    }
+                  },
+                ),
               if (_dueDate != null)
                 ActionChip(
                   avatar: const Icon(Icons.clear, size: 16),
@@ -469,8 +556,8 @@ class _MemoryEditorState extends State<MemoryEditor> {
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               switch (_priority) {
-                MemoryPriority.normal =>
-                  context.pick('Te avisa una vez y ya.', 'Notifies you once and that\'s it.'),
+                MemoryPriority.normal => context.pick('Te avisa una vez y ya.',
+                    'Notifies you once and that\'s it.'),
                 MemoryPriority.important => context.pick(
                     'Reavisa una vez más si lo ignoras.',
                     'Reminds you once more if you ignore it.'),
@@ -491,7 +578,8 @@ class _MemoryEditorState extends State<MemoryEditor> {
           SegmentedButton<BoardZone>(
             segments: [
               ButtonSegment(
-                  value: BoardZone.today, label: Text(context.pick('Hoy', 'Today'))),
+                  value: BoardZone.today,
+                  label: Text(context.pick('Hoy', 'Today'))),
               ButtonSegment(
                   value: BoardZone.dontForget,
                   label: Text(context.pick('No olvidar', 'Don\'t forget'))),
@@ -521,8 +609,7 @@ class _MemoryEditorState extends State<MemoryEditor> {
                   onPressed: () =>
                       setState(() => _checklist.removeAt(entry.key)),
                 ),
-                onChanged: (v) =>
-                    setState(() => entry.value.done = v ?? false),
+                onChanged: (v) => setState(() => entry.value.done = v ?? false),
               )),
           TextField(
             controller: _checkInput,
@@ -558,7 +645,8 @@ class _MemoryEditorState extends State<MemoryEditor> {
                 child: TextField(
                   controller: _tagInput,
                   decoration: InputDecoration(
-                      hintText: context.pick('#etiqueta', '#tag'), isDense: true),
+                      hintText: context.pick('#etiqueta', '#tag'),
+                      isDense: true),
                   onSubmitted: (_) => _addTag(),
                 ),
               ),
@@ -569,6 +657,10 @@ class _MemoryEditorState extends State<MemoryEditor> {
       ),
     );
   }
+}
+
+String _alarmSoundLabel(BuildContext context, String? sound) {
+  return AudioStore.labelFor(sound, en: context.isEn);
 }
 
 // hoja para elegir la repetición
@@ -620,12 +712,22 @@ class _RecurrenceSheetState extends State<_RecurrenceSheet> {
                 for (final (label, type) in [
                   (context.pick('Nunca', 'Never'), RecurrenceType.none),
                   (context.pick('Cada día', 'Every day'), RecurrenceType.daily),
-                  (context.pick('Cada semana', 'Every week'), RecurrenceType.weekly),
-                  (context.pick('Cada mes', 'Every month'), RecurrenceType.monthly),
-                  (context.pick('Días concretos', 'Specific days'),
-                      RecurrenceType.weekdays),
-                  (context.pick('Cada X horas', 'Every X hours'),
-                      RecurrenceType.everyXHours),
+                  (
+                    context.pick('Cada semana', 'Every week'),
+                    RecurrenceType.weekly
+                  ),
+                  (
+                    context.pick('Cada mes', 'Every month'),
+                    RecurrenceType.monthly
+                  ),
+                  (
+                    context.pick('Días concretos', 'Specific days'),
+                    RecurrenceType.weekdays
+                  ),
+                  (
+                    context.pick('Cada X horas', 'Every X hours'),
+                    RecurrenceType.everyXHours
+                  ),
                 ])
                   ChoiceChip(
                     label: Text(label),
@@ -662,8 +764,7 @@ class _RecurrenceSheetState extends State<_RecurrenceSheet> {
                       max: 24,
                       divisions: 23,
                       label: '$_everyHours h',
-                      onChanged: (v) =>
-                          setState(() => _everyHours = v.round()),
+                      onChanged: (v) => setState(() => _everyHours = v.round()),
                     ),
                   ),
                   Text('$_everyHours h'),

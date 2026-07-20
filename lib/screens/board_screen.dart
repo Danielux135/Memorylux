@@ -120,48 +120,24 @@ class _BoardScreenState extends State<BoardScreen> {
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: _searching
-            ? TextField(
-                autofocus: true,
-                decoration: InputDecoration(
-                    hintText:
-                        context.pick('Buscar recuerdos…', 'Search memories…')),
-                onChanged: provider.setSearch,
-              )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SvgPicture.asset(
-                    'assets/logo/memorylux_logo.svg',
-                    height: 26,
-                  ),
-                  const SizedBox(width: 10),
-                  const Text('Memorylux'),
-                ],
-              ),
-        actions: [
-          IconButton(
-            tooltip: _searching
-                ? context.pick('Cerrar búsqueda', 'Close search')
-                : context.pick('Buscar', 'Search'),
-            icon: Icon(_searching ? Icons.close : Icons.search),
-            onPressed: () {
-              setState(() => _searching = !_searching);
-              if (!_searching) provider.setSearch('');
-            },
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => MemoryEditor.open(context),
-        icon: const Icon(Icons.note_add),
-        label: Text(context.pick('Recuerdo', 'Memory')),
+      floatingActionButton: FloatingActionButton(
+        tooltip: _searching
+            ? context.pick('Cerrar búsqueda', 'Close search')
+            : context.pick('Buscar', 'Search'),
+        onPressed: () {
+          setState(() => _searching = !_searching);
+          if (!_searching) provider.setSearch('');
+        },
+        child: Icon(_searching ? Icons.close : Icons.search),
       ),
       body: Column(
         children: [
+          _BoardHeader(
+            searching: _searching,
+            onSearchChanged: provider.setSearch,
+          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             child: QuickAddBar(onSubmit: _quickAdd),
           ),
           if (provider.allTags.isNotEmpty)
@@ -223,6 +199,55 @@ class _BoardScreenState extends State<BoardScreen> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BoardHeader extends StatelessWidget {
+  final bool searching;
+  final ValueChanged<String> onSearchChanged;
+
+  const _BoardHeader({
+    required this.searching,
+    required this.onSearchChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final topInset = MediaQuery.paddingOf(context).top;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, topInset + 2, 16, 2),
+      child: SizedBox(
+        height: 34,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: searching
+              ? TextField(
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: context.pick(
+                      'Buscar recuerdos...',
+                      'Search memories...',
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.only(top: 4),
+                  ),
+                  onChanged: onSearchChanged,
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SvgPicture.asset(
+                      'assets/logo/memorylux_logo.svg',
+                      height: 26,
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('Memorylux'),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -435,7 +460,18 @@ class _NoteGrid extends StatelessWidget {
                 onAcceptWithDetails: (details) {
                   final box = cardContext.findRenderObject() as RenderBox;
                   final local = box.globalToLocal(details.offset);
-                  final before = local.dy < box.size.height / 2;
+                  var before = local.dy < box.size.height / 2;
+                  final movedIndex = memories
+                      .indexWhere((memory) => memory.id == details.data.id);
+                  final targetIndex =
+                      memories.indexWhere((memory) => memory.id == m.id);
+                  if (movedIndex != -1 && targetIndex != -1) {
+                    if (movedIndex + 1 == targetIndex && before) {
+                      before = false;
+                    } else if (targetIndex + 1 == movedIndex && !before) {
+                      before = true;
+                    }
+                  }
                   onReorder(zone, memories, details.data, m, before);
                 },
                 builder: (context, candidateData, rejectedData) {

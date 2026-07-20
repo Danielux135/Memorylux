@@ -13,6 +13,7 @@ class UserSettings {
   bool dailySummaryEnabled; // resumen de tareas al empezar el día
   int dailySummaryHour; // hora del resumen diario
   int dailySummaryMinute; // minuto del resumen diario
+  String defaultAlarmSound; // 'alarm' o 'silent'
 
   UserSettings({
     required this.userId,
@@ -29,6 +30,7 @@ class UserSettings {
     this.dailySummaryEnabled = true,
     this.dailySummaryHour = 8,
     this.dailySummaryMinute = 0,
+    this.defaultAlarmSound = 'alarm',
   });
 
   Map<String, dynamic> toMap() => {
@@ -46,6 +48,7 @@ class UserSettings {
         'dailySummaryEnabled': dailySummaryEnabled,
         'dailySummaryHour': dailySummaryHour,
         'dailySummaryMinute': dailySummaryMinute,
+        'defaultAlarmSound': defaultAlarmSound,
       };
 
   factory UserSettings.fromMap(Map<String, dynamic> map) => UserSettings(
@@ -62,13 +65,13 @@ class UserSettings {
             (map['defaultNotificationMinutes'] as int?) ?? 30,
         syncEnabled: (map['syncEnabled'] as bool?) ?? true,
         themeMode: (map['themeMode'] as String?) ?? 'dark',
-        persistentRepeatMinutes:
-            (map['persistentRepeatMinutes'] as int?) ?? 10,
+        persistentRepeatMinutes: (map['persistentRepeatMinutes'] as int?) ?? 10,
         persistentMaxAlerts: (map['persistentMaxAlerts'] as int?) ?? 3,
         language: (map['language'] as String?) ?? 'es',
         dailySummaryEnabled: (map['dailySummaryEnabled'] as bool?) ?? true,
         dailySummaryHour: (map['dailySummaryHour'] as int?) ?? 8,
         dailySummaryMinute: (map['dailySummaryMinute'] as int?) ?? 0,
+        defaultAlarmSound: (map['defaultAlarmSound'] as String?) ?? 'alarm',
       );
 
   bool get isInQuietMode {

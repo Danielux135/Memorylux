@@ -6,9 +6,12 @@ import 'package:provider/provider.dart';
 import '../providers/memory_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/auth_service.dart';
+import '../services/audio_store.dart';
 import '../services/export_service.dart';
+import '../services/monetization_service.dart';
 import '../services/notification_service.dart';
 import '../services/sync_service.dart';
+import '../services/widget_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/feedback_sheet.dart';
 import '../widgets/lead_time_sheet.dart';
@@ -84,6 +87,67 @@ class SettingsScreen extends StatelessWidget {
                       .read<MemoryProvider>()
                       .rescheduleAll(settingsProvider.settings);
                 }
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.volume_up),
+            title: Text(context.pick('Sonido por defecto', 'Default sound')),
+            subtitle:
+                Text(_alarmSoundLabel(context, settings.defaultAlarmSound)),
+            onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final savedSoundMessage = context.pick(
+                'Sonido "{name}" guardado por defecto',
+                'Sound "{name}" saved as default',
+              );
+              final sound = await showModalBottomSheet<String>(
+                context: context,
+                showDragHandle: true,
+                builder: (ctx) => SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.notifications_active),
+                        title: const Text('Alarm'),
+                        onTap: () => Navigator.pop(ctx, 'alarm'),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.audio_file),
+                        title: Text(
+                            context.pick('Elegir audio...', 'Choose audio...')),
+                        onTap: () => Navigator.pop(ctx, 'pick'),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.volume_off),
+                        title: Text(context.pick('Silencio', 'Silent')),
+                        onTap: () => Navigator.pop(ctx, 'silent'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+              if (sound == null || !context.mounted) return;
+              var value = sound;
+              if (sound == 'pick') {
+                final audio = await AudioStore.pickAndStore();
+                if (audio == null || !context.mounted) return;
+                value = audio.value;
+                if (!context.mounted) return;
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      savedSoundMessage.replaceAll('{name}', audio.name),
+                    ),
+                  ),
+                );
+              }
+              await settingsProvider.setDefaultAlarmSound(value);
+              if (context.mounted) {
+                await context
+                    .read<MemoryProvider>()
+                    .rescheduleAll(settingsProvider.settings);
               }
             },
           ),
@@ -231,6 +295,10 @@ class SettingsScreen extends StatelessWidget {
               onSelectionChanged: (s) => settingsProvider.setThemeMode(s.first),
             ),
           ),
+          if (context.watch<MonetizationService>().isAndroid) ...[
+            const _Section(title: 'Widgets'),
+            const _WidgetSettingsSection(),
+          ],
           _Section(title: context.pick('Nube', 'Cloud')),
           SwitchListTile(
             secondary: const Icon(Icons.cloud_sync),
@@ -414,6 +482,10 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
+String _alarmSoundLabel(BuildContext context, String sound) {
+  return AudioStore.labelFor(sound, en: context.isEn);
+}
+
 class _ControlTile extends StatelessWidget {
   final Widget leading;
   final String title;
@@ -499,6 +571,175 @@ class _Section extends StatelessWidget {
       child: Text(title,
           style: AppTheme.hand(
               size: 24, color: Theme.of(context).colorScheme.onSurface)),
+    );
+  }
+}
+
+// sección de ajustes de los widgets de pantalla de inicio; la apariencia
+// solo es editable con premium (los free ven las opciones bloqueadas)
+class _WidgetSettingsSection extends StatefulWidget {
+  const _WidgetSettingsSection();
+
+  @override
+  State<_WidgetSettingsSection> createState() => _WidgetSettingsSectionState();
+}
+
+class _WidgetSettingsSectionState extends State<_WidgetSettingsSection> {
+  WidgetSettings? _settings;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetSettings.load().then((s) {
+      if (mounted) setState(() => _settings = s);
+    });
+  }
+
+  // mismo patrón de gating que las fotos custom del editor
+  bool _requirePremium() {
+    final monetization = context.read<MonetizationService>();
+    if (monetization.isAndroid && !monetization.isPremium) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(context.pick(
+          'Personalizar los widgets es una función premium.',
+          'Widget customization is a premium feature.',
+        )),
+      ));
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _apply(void Function(WidgetSettings s) change) async {
+    final s = _settings;
+    if (s == null || !_requirePremium()) return;
+    setState(() => change(s));
+    await s.save();
+    if (!mounted) return;
+    await context.read<MemoryProvider>().refreshWidgets();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _settings;
+    if (s == null) return const SizedBox.shrink();
+    final premium = context.watch<MonetizationService>().isPremium;
+    final scheme = Theme.of(context).colorScheme;
+    final lock = premium
+        ? null
+        : Icon(Icons.lock_outline, size: 18, color: scheme.onSurfaceVariant);
+
+    return Column(
+      children: [
+        ListTile(
+          title: Text(context.pick('Tema del widget', 'Widget theme')),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (lock != null) ...[lock, const SizedBox(width: 8)],
+              DropdownButton<String>(
+                value: s.theme,
+                underline: const SizedBox.shrink(),
+                items: [
+                  DropdownMenuItem(
+                      value: 'auto',
+                      child: Text(context.pick('Automático', 'Auto'))),
+                  DropdownMenuItem(
+                      value: 'light',
+                      child: Text(context.pick('Claro', 'Light'))),
+                  DropdownMenuItem(
+                      value: 'dark',
+                      child: Text(context.pick('Oscuro', 'Dark'))),
+                ],
+                onChanged: (v) {
+                  if (v != null) _apply((s) => s.theme = v);
+                },
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          title: Text(context.pick(
+              'Color del widget resumen', 'Summary widget color')),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              children: [
+                for (final hex in AppTheme.noteColors)
+                  GestureDetector(
+                    onTap: () => _apply((s) => s.noteColor = hex),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.noteColor(hex),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: s.noteColor == hex
+                              ? scheme.onSurface
+                              : scheme.outlineVariant,
+                          width: s.noteColor == hex ? 2 : 1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          trailing: lock,
+        ),
+        ListTile(
+          title: Text(context.pick('Opacidad del fondo', 'Background opacity')),
+          subtitle: Slider(
+            value: s.opacity.toDouble(),
+            min: 60,
+            max: 100,
+            divisions: 8,
+            label: '${s.opacity}%',
+            onChanged: premium
+                ? (v) => setState(() => s.opacity = v.round())
+                : (_) => _requirePremium(),
+            onChangeEnd: (v) => _apply((s) => s.opacity = v.round()),
+          ),
+          trailing: lock,
+        ),
+        SwitchListTile(
+          title: Text(context.pick('Mostrar racha', 'Show streak')),
+          value: s.showStreak,
+          onChanged: (v) => _apply((s) => s.showStreak = v),
+          secondary: lock,
+        ),
+        ListTile(
+          title: Text(context.pick(
+              'Zona del widget tablero', 'Board widget zone')),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (lock != null) ...[lock, const SizedBox(width: 8)],
+              DropdownButton<String>(
+                value: s.zone,
+                underline: const SizedBox.shrink(),
+                items: [
+                  DropdownMenuItem(
+                      value: 'today',
+                      child: Text(context.pick('Hoy', 'Today'))),
+                  DropdownMenuItem(
+                      value: 'dontForget',
+                      child:
+                          Text(context.pick('No olvidar', "Don't forget"))),
+                  DropdownMenuItem(
+                      value: 'waiting',
+                      child: Text(context.pick('En espera', 'Waiting'))),
+                ],
+                onChanged: (v) {
+                  if (v != null) _apply((s) => s.zone = v);
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

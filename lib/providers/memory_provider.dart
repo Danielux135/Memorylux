@@ -6,14 +6,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/memory.dart';
 import '../models/user_settings.dart';
 import '../services/auth_service.dart';
+import '../services/monetization_service.dart';
 import '../services/notification_service.dart';
 import '../services/sync_service.dart';
+import '../services/widget_service.dart';
 
 // estado central: todas las memorias, el tablero, posponer, completar y migrar
 class MemoryProvider extends ChangeNotifier {
   final AuthService _authService;
   final NotificationService _notificationService;
   final SyncService _syncService;
+  final MonetizationService _monetizationService;
 
   List<Memory> _memories = [];
   StreamSubscription<NotificationResponse>? _notificationSubscription;
@@ -30,9 +33,11 @@ class MemoryProvider extends ChangeNotifier {
     required AuthService authService,
     required NotificationService notificationService,
     required SyncService syncService,
+    required MonetizationService monetizationService,
   })  : _authService = authService,
         _notificationService = notificationService,
-        _syncService = syncService {
+        _syncService = syncService,
+        _monetizationService = monetizationService {
     _notificationSubscription =
         _notificationService.responses.listen(_handleNotificationResponse);
   }
@@ -209,22 +214,52 @@ class MemoryProvider extends ChangeNotifier {
     await _notificationService.scheduleMemory(memory, settings);
     await _refreshDailySummary(settings);
     if (settings.syncEnabled) {
-      await _syncService.pushMemory(
-          userId: _authService.userId, memory: memory);
+      final remoteUrl = await _syncService.pushMemory(
+          userId: _authService.userId,
+          memory: memory,
+          accountPremium: _monetizationService.isPremium);
+      if (remoteUrl != null) {
+        final index = _memories.indexWhere((m) => m.id == memory.id);
+        if (index != -1) {
+          _memories[index].imageRemotePath = remoteUrl;
+          await _saveToLocal();
+          notifyListeners();
+        }
+      }
     }
   }
 
   Future<void> updateMemory(Memory memory, UserSettings settings) async {
     final index = _memories.indexWhere((m) => m.id == memory.id);
     if (index == -1) return;
-    _memories[index] = memory;
+    final previous = _memories[index];
+    final imageChanged = previous.imagePath != memory.imagePath;
+    final updated =
+        imageChanged ? memory.copyWith(imageRemotePath: null) : memory;
+    _memories[index] = updated;
     notifyListeners();
     await _saveToLocal();
-    await _notificationService.scheduleMemory(memory, settings);
+    await _notificationService.scheduleMemory(updated, settings);
     await _refreshDailySummary(settings);
     if (settings.syncEnabled) {
-      await _syncService.pushMemory(
-          userId: _authService.userId, memory: memory);
+      final remoteUrl = await _syncService.pushMemory(
+          userId: _authService.userId,
+          memory: updated,
+          accountPremium: _monetizationService.isPremium);
+      if (remoteUrl != null) {
+        final currentIndex = _memories.indexWhere((m) => m.id == updated.id);
+        if (currentIndex != -1) {
+          _memories[currentIndex].imageRemotePath = remoteUrl;
+          await _saveToLocal();
+          notifyListeners();
+        }
+      }
+      if (imageChanged) {
+        await _syncService.deleteHostedImage(
+          userId: _authService.userId,
+          remoteUrl: previous.imageRemotePath,
+        );
+      }
     }
   }
 
@@ -254,6 +289,7 @@ class MemoryProvider extends ChangeNotifier {
               memory.checklist.map((c) => ChecklistItem(text: c.text)).toList(),
           color: memory.color,
           imagePath: memory.imagePath,
+          imageRemotePath: memory.imageRemotePath,
           tags: List.of(memory.tags),
           dueDate: next,
           hasTime: memory.hasTime,
@@ -274,6 +310,7 @@ class MemoryProvider extends ChangeNotifier {
       await _syncService.pushMemory(
         userId: _authService.userId,
         memory: _memories[index],
+        accountPremium: _monetizationService.isPremium,
       );
     }
   }
@@ -303,7 +340,9 @@ class MemoryProvider extends ChangeNotifier {
     await _refreshDailySummary(settings);
     if (settings.syncEnabled) {
       await _syncService.pushMemory(
-          userId: _authService.userId, memory: updated);
+          userId: _authService.userId,
+          memory: updated,
+          accountPremium: _monetizationService.isPremium);
     }
   }
 
@@ -375,6 +414,10 @@ class MemoryProvider extends ChangeNotifier {
     if (settings != null) await _refreshDailySummary(settings);
     await _saveToLocal();
     await _syncService.deleteMemory(userId: _authService.userId, memoryId: id);
+    await _syncService.deleteHostedImage(
+      userId: _authService.userId,
+      remoteUrl: memory.imageRemotePath,
+    );
   }
 
   // reprograma todos los avisos y el resumen diario con los ajustes dados
@@ -411,6 +454,7 @@ class MemoryProvider extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+    unawaited(refreshWidgets());
   }
 
   // convierte los datos de la versión 1 (reminders + sticky_notes) en memorias
@@ -465,7 +509,13 @@ class MemoryProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
         'memories', jsonEncode(_memories.map((m) => m.toMap()).toList()));
+    // cada guardado refresca los widgets de pantalla de inicio
+    unawaited(WidgetService.instance.sync(_memories, currentStreak));
   }
+
+  // repinta los widgets con el estado actual (ej. al arrancar o cambiar idioma)
+  Future<void> refreshWidgets() =>
+      WidgetService.instance.sync(_memories, currentStreak);
 
   Future<void> syncWithCloud(UserSettings settings) async {
     if (!settings.syncEnabled) return;
@@ -512,6 +562,13 @@ class MemoryProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+    await _syncService.migrateLegacyImages(
+      userId: _authService.userId,
+      memories: _memories,
+      accountPremium: _monetizationService.isPremium,
+    );
+    await _saveToLocal();
+    notifyListeners();
     await _notificationService.rescheduleAll(_memories, settings);
   }
 

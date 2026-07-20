@@ -97,6 +97,16 @@ class SettingsProvider extends ChangeNotifier {
     );
   }
 
+  Future<void> setDefaultAlarmSound(String sound) async {
+    _settings.defaultAlarmSound = sound;
+    _saveToLocal();
+    notifyListeners();
+    await _syncService.pushSettings(
+      userId: _authService.userId,
+      settings: _settings,
+    );
+  }
+
   Future<void> setPersistentRepeatMinutes(int minutes) async {
     _settings.persistentRepeatMinutes = minutes;
     _saveToLocal();

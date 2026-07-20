@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- punto de color de la nota; se tinta en runtime con el color del post-it -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#FFFFFF" />
+    <size android:width="10dp" android:height="10dp" />
+</shape>

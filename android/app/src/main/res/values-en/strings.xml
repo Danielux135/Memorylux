@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_compact_desc">Today at a glance: pending and streak</string>
+    <string name="widget_list_desc">Today\'s task list</string>
+    <string name="widget_board_desc">Board with your notes and quick add</string>
+</resources>

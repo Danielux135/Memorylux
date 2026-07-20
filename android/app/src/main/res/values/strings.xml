@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- textos del selector de widgets (español por defecto) -->
+    <string name="widget_compact_desc">Resumen de hoy: pendientes y racha</string>
+    <string name="widget_list_desc">Lista de tareas de hoy</string>
+    <string name="widget_board_desc">Tablero con tus notas y nueva nota rápida</string>
+</resources>
